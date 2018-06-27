@@ -23,6 +23,28 @@ type SetACLRequestBody struct {
 	Users []string `json:"users"`
 }
 
+// ModifyACLRequest holds parameters for an aclstore.Manager.ModifyACL call.
+type ModifyACLRequest struct {
+	httprequest.Route `httprequest:"POST /:name"`
+	Body              ModifyACLRequestBody `httprequest:",body"`
+	// Name holds the name of the ACL to change.
+	Name string `httprequest:"name,path"`
+}
+
+// ACLName returns the name of the ACL that's being modified.
+func (r ModifyACLRequest) ACLName() string {
+	return r.Name
+}
+
+// ModifyACLRequestBody holds the HTTP body for an aclstore.Manager.ModifyACL call.
+// It is an error for both Add and Remove to be specified at the same time.
+type ModifyACLRequestBody struct {
+	// Add specifies users to add to the ACL.
+	Add []string `json:"add,omitempty"`
+	// Remove specifies users to remove from the ACL.
+	Remove []string `json:"remove,omitempty"`
+}
+
 // GetACLRequest holds parameters for an aclstore.Manager.GetACL call.
 type GetACLRequest struct {
 	httprequest.Route `httprequest:"GET /:name"`

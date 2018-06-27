@@ -22,6 +22,13 @@ func (c *client) GetACL(ctx context.Context, p *params.GetACLRequest) (*params.G
 	return r, err
 }
 
+// ModifyACL modifies the members of the ACL with the requested name.
+// Only administrators and members of the meta-ACL for the name
+// may access this endpoint. The meta-ACL for meta-ACLs is "admin".
+func (c *client) ModifyACL(ctx context.Context, p *params.ModifyACLRequest) error {
+	return c.Client.Call(ctx, p, nil)
+}
+
 // SetACL sets the members of the ACL with the requested name.
 // Only administrators and members of the meta-ACL for the name
 // may access this endpoint. The meta-ACL for meta-ACLs is "admin".

@@ -88,7 +88,7 @@ func errorMapper(ctx context.Context, err error) (int, interface{}) {
 // created, named "admin", which is given p.InitialAdminUsers
 // when it is first created.
 func NewManager(ctx context.Context, p Params) (*Manager, error) {
-	if err := p.Store.CreateACL(ctx, AdminACL, p.InitialAdminUsers...); err != nil {
+	if err := p.Store.CreateACL(ctx, AdminACL, p.InitialAdminUsers); err != nil {
 		return nil, errgo.Notef(err, "cannot create initial admin ACL")
 	}
 	m := &Manager{
@@ -143,10 +143,10 @@ func (h *Manager) CreateACL(ctx context.Context, name string, initialUsers ...st
 	if isMetaName(name) {
 		return errgo.Newf("invalid ACL name %q", name)
 	}
-	if err := h.p.Store.CreateACL(ctx, name, initialUsers...); err != nil {
+	if err := h.p.Store.CreateACL(ctx, name, initialUsers); err != nil {
 		return errgo.Mask(err)
 	}
-	if err := h.p.Store.CreateACL(ctx, metaName(name)); err != nil {
+	if err := h.p.Store.CreateACL(ctx, metaName(name), nil); err != nil {
 		return errgo.Mask(err)
 	}
 	return nil
@@ -234,8 +234,26 @@ func (h handler) GetACL(p httprequest.Params, req *params.GetACLRequest) (*param
 // Only administrators and members of the meta-ACL for the name
 // may access this endpoint. The meta-ACL for meta-ACLs is "admin".
 func (h handler) SetACL(p httprequest.Params, req *params.SetACLRequest) error {
-	err := h.manager.p.Store.Set(p.Context, req.Name, req.Body.Users...)
+	err := h.manager.p.Store.Set(p.Context, req.Name, req.Body.Users)
 	return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
+}
+
+// ModifyACL modifies the members of the ACL with the requested name.
+// Only administrators and members of the meta-ACL for the name
+// may access this endpoint. The meta-ACL for meta-ACLs is "admin".
+func (h handler) ModifyACL(p httprequest.Params, req *params.ModifyACLRequest) error {
+	switch {
+	case len(req.Body.Add) > 0 && len(req.Body.Remove) > 0:
+		return httprequest.Errorf(httprequest.CodeBadRequest, "cannot add and remove users at the same time")
+	case len(req.Body.Add) > 0:
+		err := h.manager.p.Store.Add(p.Context, req.Name, req.Body.Add)
+		return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
+	case len(req.Body.Remove) > 0:
+		err := h.manager.p.Store.Remove(p.Context, req.Name, req.Body.Remove)
+		return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
+	default:
+		return nil
+	}
 }
 
 func metaName(aclName string) string {

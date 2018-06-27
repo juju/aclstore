@@ -217,6 +217,124 @@ func TestSetACL(t *testing.T) {
 	}
 }
 
+var modifyACLTests = []struct {
+	testName       string
+	path           string
+	users          map[string][]string
+	addUsers       []string
+	removeUsers    []string
+	expectCheckACL []string
+	expectACLName  string
+	expectACL      []string
+	expectStatus   int
+	expectResponse interface{}
+}{{
+	testName: "add_admin_ACL",
+	users: map[string][]string{
+		"admin": {"alice", "bob"},
+	},
+	path:           "/root/admin",
+	addUsers:       []string{"foo", "bar", "alice"},
+	expectCheckACL: []string{"alice", "bob"},
+	expectACLName:  "admin",
+	expectACL:      []string{"alice", "bar", "bob", "foo"},
+	expectStatus:   http.StatusOK,
+}, {
+	testName: "remove_admin_ACL",
+	users: map[string][]string{
+		"admin": {"alice", "bob"},
+	},
+	path:           "/root/admin",
+	removeUsers:    []string{"bar", "alice"},
+	expectCheckACL: []string{"alice", "bob"},
+	expectACLName:  "admin",
+	expectACL:      []string{"bob"},
+	expectStatus:   http.StatusOK,
+}, {
+	testName:     "set_nonexistent_ACL",
+	path:         "/root/nonexistent",
+	expectStatus: http.StatusNotFound,
+	expectResponse: httprequest.RemoteError{
+		Message: "ACL not found",
+		Code:    aclstore.CodeACLNotFound,
+	},
+}, {
+	testName: "remove_and_add",
+	users: map[string][]string{
+		"admin": {"alice", "bob"},
+	},
+	path:           "/root/admin",
+	addUsers:       []string{"edward"},
+	removeUsers:    []string{"bar"},
+	expectCheckACL: []string{"alice", "bob"},
+	expectStatus:   http.StatusBadRequest,
+	expectResponse: &httprequest.RemoteError{
+		Message: `cannot add and remove users at the same time`,
+		Code:    httprequest.CodeBadRequest,
+	},
+}, {
+	testName: "add_to_non_admin_ACL",
+	users: map[string][]string{
+		"admin":    {"boss"},
+		"someacl":  {"charlie", "daisy"},
+		"_someacl": {"a", "b"},
+	},
+	path:           "/root/someacl",
+	addUsers:       []string{"elouise", "fred"},
+	expectCheckACL: []string{"a", "b", "boss"},
+	expectACLName:  "someacl",
+	expectACL:      []string{"charlie", "daisy", "elouise", "fred"},
+	expectStatus:   http.StatusOK,
+}, {
+	testName: "add_to_meta_ACL",
+	users: map[string][]string{
+		"admin":    {"boss"},
+		"someacl":  {"charlie", "daisy"},
+		"_someacl": {"a", "b"},
+	},
+	path:           "/root/_someacl",
+	addUsers:       []string{"charlie"},
+	expectCheckACL: []string{"boss"},
+	expectACLName:  "_someacl",
+	expectACL:      []string{"a", "b", "charlie"},
+	expectStatus:   http.StatusOK,
+}, {
+	testName: "add_invalid_user",
+	users: map[string][]string{
+		"admin": {"boss"},
+	},
+	path:           "/root/admin",
+	addUsers:       []string{"daisy", ""},
+	expectCheckACL: []string{"boss"},
+	expectStatus:   http.StatusBadRequest,
+	expectResponse: httprequest.RemoteError{
+		Message: `invalid user name ""`,
+		Code:    httprequest.CodeBadRequest,
+	},
+}}
+
+func TestModifyACL(t *testing.T) {
+	c := qt.New(t)
+	for _, test := range modifyACLTests {
+		c.Run(test.testName, func(c *qt.C) {
+			var checkedACL []string
+			m := managerWithACLs(c, "/root", test.users, &checkedACL)
+			srv := httptest.NewServer(m)
+			defer srv.Close()
+			assertJSONCall(c, "POST", srv.URL+test.path, map[string][]string{
+				"add":    test.addUsers,
+				"remove": test.removeUsers,
+			}, test.expectStatus, test.expectResponse)
+			c.Assert(checkedACL, qt.DeepEquals, test.expectCheckACL)
+			if test.expectACLName != "" {
+				gotACL, err := m.ACL(context.Background(), test.expectACLName)
+				c.Assert(err, qt.Equals, nil)
+				c.Assert(gotACL, qt.DeepEquals, test.expectACL)
+			}
+		})
+	}
+}
+
 func TestWithAuthenticate(t *testing.T) {
 	ctx := context.Background()
 	c := qt.New(t)
@@ -321,7 +439,7 @@ func managerWithACLs(c *qt.C, rootPath string, acls map[string][]string, checked
 	ctx := context.Background()
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
 	for aclName, users := range acls {
-		err := store.CreateACL(ctx, aclName, users...)
+		err := store.CreateACL(ctx, aclName, users)
 		c.Assert(err, qt.Equals, nil)
 	}
 	m, err := aclstore.NewManager(ctx, aclstore.Params{
