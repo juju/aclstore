@@ -13,7 +13,10 @@ import (
 	"gopkg.in/errgo.v1"
 )
 
-var ErrACLNotFound = errgo.Newf("ACL not found")
+var (
+	ErrACLNotFound = errgo.Newf("ACL not found")
+	ErrBadUsername = errgo.Newf("bad username")
+)
 
 // separator is used as the character to divide usernames in the ACL.
 // This needs to be a character that's illegal in usernames.
@@ -21,15 +24,18 @@ const separator = "\n"
 
 // ACLStore is the persistent storage interface used by an ACLHandler.
 type ACLStore interface {
-	// NewACL creates an ACL with the given name and initial users.
+	// CreateACL creates an ACL with the given name and initial users.
 	// If the ACL already exists, this is a no-op and the initialUsers
 	// argument is ignored.
-	NewACL(ctx context.Context, aclName string, initialUsers ...string) error
+	// It may return an error with an ErrBadUsername if the initial users
+	// are not valid.
+	CreateACL(ctx context.Context, aclName string, initialUsers ...string) error
 
 	// Add adds users to the ACL with the given name.
 	// Adding a user that's already in the ACL is a no-op.
 	// It returns an error with an ErrACLNotFound cause if the ACL
-	// does not exist.
+	// does not exist, or with an ErrBadUsername cause if any
+	// of the usernames are not valid.
 	Add(ctx context.Context, aclName string, users ...string) error
 
 	// Remove removes users from the ACL with the given name.
@@ -41,7 +47,8 @@ type ACLStore interface {
 
 	// Set sets the users held in the ACL with the given name.
 	// It returns an ErrACLNotFound cause if the ACL does not
-	// exist.
+	// exist, or with an ErrBadUsername cause if any
+	// of the usernames are not valid.
 	Set(ctx context.Context, aclName string, users ...string) error
 
 	// Get returns the users held in the ACL with the given name,
@@ -62,15 +69,15 @@ type kvStore struct {
 
 var errAlreadyExists = errgo.Newf("ACL already exists")
 
-// NewACL implements ACLStore.NewACL.
-func (s *kvStore) NewACL(ctx context.Context, aclName string, initialUsers ...string) error {
+// CreateACL implements ACLStore.CreateACL.
+func (s *kvStore) CreateACL(ctx context.Context, aclName string, initialUsers ...string) error {
 	err := s.kv.Update(ctx, aclName, time.Time{}, func(val []byte) ([]byte, error) {
 		if val != nil {
 			return nil, errAlreadyExists
 		}
 		newVal, err := s.aclToValue(initialUsers)
 		if err != nil {
-			return nil, errgo.Mask(err)
+			return nil, errgo.Mask(err, errgo.Is(ErrBadUsername))
 		}
 		return newVal, nil
 	})
@@ -78,7 +85,7 @@ func (s *kvStore) NewACL(ctx context.Context, aclName string, initialUsers ...st
 		if errgo.Cause(err) == errAlreadyExists {
 			return nil
 		}
-		return errgo.Mask(err)
+		return errgo.Mask(err, errgo.Is(ErrBadUsername))
 	}
 	return nil
 }
@@ -93,12 +100,12 @@ func (s *kvStore) Add(ctx context.Context, aclName string, users ...string) erro
 		acl = append(acl, users...)
 		newVal, err := s.aclToValue(acl)
 		if err != nil {
-			return nil, errgo.Mask(err)
+			return nil, errgo.Mask(err, errgo.Is(ErrBadUsername))
 		}
 		return newVal, nil
 	})
 	if err != nil {
-		return errgo.Mask(err, errgo.Is(ErrACLNotFound))
+		return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
 	}
 	return nil
 }
@@ -125,12 +132,12 @@ func (s *kvStore) Remove(ctx context.Context, aclName string, users ...string) e
 		}
 		newVal, err := s.aclToValue(newACL)
 		if err != nil {
-			return nil, errgo.Mask(err)
+			return nil, errgo.Mask(err, errgo.Is(ErrBadUsername))
 		}
 		return newVal, nil
 	})
 	if err != nil {
-		return errgo.Mask(err, errgo.Is(ErrACLNotFound))
+		return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
 	}
 	return nil
 }
@@ -139,7 +146,7 @@ func (s *kvStore) Remove(ctx context.Context, aclName string, users ...string) e
 func (s *kvStore) Set(ctx context.Context, aclName string, users ...string) error {
 	newVal, err := s.aclToValue(users)
 	if err != nil {
-		return errgo.Mask(err)
+		return errgo.Mask(err, errgo.Is(ErrBadUsername))
 	}
 	err = s.kv.Update(ctx, aclName, time.Time{}, func(val []byte) ([]byte, error) {
 		if val == nil {
@@ -174,7 +181,7 @@ func (*kvStore) aclToValue(acl []string) ([]byte, error) {
 	for _, a := range acl {
 		size += len(a)
 		if !validUser(a) {
-			return nil, errgo.Newf("invalid user name %q", a)
+			return nil, errgo.WithCausef(nil, ErrBadUsername, "invalid user name %q", a)
 		}
 	}
 	out := make([]byte, 0, size+len(acl))
@@ -187,6 +194,9 @@ func (*kvStore) aclToValue(acl []string) ([]byte, error) {
 }
 
 func (*kvStore) valueToACL(data []byte) []string {
+	if len(data) == 0 {
+		return nil
+	}
 	return strings.Split(string(data), separator)
 }
 
@@ -222,5 +232,5 @@ func canonicalACL(acl []string) []string {
 }
 
 func validUser(u string) bool {
-	return !strings.Contains(u, separator)
+	return len(u) > 0 && !strings.Contains(u, separator)
 }

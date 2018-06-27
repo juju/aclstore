@@ -1,0 +1,11 @@
+language: go
+go_import_path: "github.com/juju/aclstore"
+go: 
+  - "1.9"
+  - "1.10"
+before_install:
+  - "go get github.com/rogpeppe/godeps"
+install:
+  - "go get -d github.com/juju/aclstore"
+  - "godeps -u $GOPATH/src/github.com/juju/aclstore/dependencies.tsv"
+script: go test ./...
