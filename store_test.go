@@ -18,7 +18,7 @@ func TestCreateACL(t *testing.T) {
 	ctx := context.Background()
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
-	err := store.CreateACL(ctx, "foo", "x", "y")
+	err := store.CreateACL(ctx, "foo", []string{"x", "y"})
 	c.Assert(err, qt.Equals, nil)
 	acl, err := store.Get(ctx, "foo")
 	c.Assert(err, qt.Equals, nil)
@@ -29,10 +29,10 @@ func TestNewACLOnExistingACL(t *testing.T) {
 	ctx := context.Background()
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
-	err := store.CreateACL(ctx, "foo", "x", "y")
+	err := store.CreateACL(ctx, "foo", []string{"x", "y"})
 	c.Assert(err, qt.Equals, nil)
 
-	err = store.CreateACL(ctx, "foo", "z", "w")
+	err = store.CreateACL(ctx, "foo", []string{"z", "w"})
 	c.Assert(err, qt.Equals, nil)
 
 	acl, err := store.Get(ctx, "foo")
@@ -44,7 +44,7 @@ func TestAddToNonExistentACL(t *testing.T) {
 	ctx := context.Background()
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
-	err := store.Add(ctx, "foo", "x", "y")
+	err := store.Add(ctx, "foo", []string{"x", "y"})
 	c.Assert(err, qt.ErrorMatches, `ACL not found`)
 	c.Assert(errgo.Cause(err), qt.Equals, aclstore.ErrACLNotFound)
 }
@@ -54,10 +54,10 @@ func TestAdd(t *testing.T) {
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
 
-	err := store.CreateACL(ctx, "foo", "e", "c")
+	err := store.CreateACL(ctx, "foo", []string{"e", "c"})
 	c.Assert(err, qt.Equals, nil)
 
-	err = store.Add(ctx, "foo", "a", "d", "f", "e", "a")
+	err = store.Add(ctx, "foo", []string{"a", "d", "f", "e", "a"})
 	c.Assert(err, qt.Equals, nil)
 
 	acl, err := store.Get(ctx, "foo")
@@ -69,7 +69,7 @@ func TestRemoveNonExistentACL(t *testing.T) {
 	ctx := context.Background()
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
-	err := store.Remove(ctx, "foo", "x", "y")
+	err := store.Remove(ctx, "foo", []string{"x", "y"})
 	c.Assert(err, qt.ErrorMatches, `ACL not found`)
 	c.Assert(errgo.Cause(err), qt.Equals, aclstore.ErrACLNotFound)
 }
@@ -79,10 +79,10 @@ func TestRemove(t *testing.T) {
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
 
-	err := store.CreateACL(ctx, "foo", "a", "b", "c", "d")
+	err := store.CreateACL(ctx, "foo", []string{"a", "b", "c", "d"})
 	c.Assert(err, qt.Equals, nil)
 
-	err = store.Remove(ctx, "foo", "b", "c", "e")
+	err = store.Remove(ctx, "foo", []string{"b", "c", "e"})
 	c.Assert(err, qt.Equals, nil)
 
 	acl, err := store.Get(ctx, "foo")
@@ -94,7 +94,7 @@ func TestSetNonExistingACL(t *testing.T) {
 	ctx := context.Background()
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
-	err := store.Set(ctx, "foo", "x", "y")
+	err := store.Set(ctx, "foo", []string{"x", "y"})
 	c.Assert(err, qt.ErrorMatches, `ACL not found`)
 	c.Assert(errgo.Cause(err), qt.Equals, aclstore.ErrACLNotFound)
 }
@@ -104,10 +104,10 @@ func TestSet(t *testing.T) {
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
 
-	err := store.CreateACL(ctx, "foo", "a", "b", "c", "d")
+	err := store.CreateACL(ctx, "foo", []string{"a", "b", "c", "d"})
 	c.Assert(err, qt.Equals, nil)
 
-	err = store.Set(ctx, "foo", "b", "c", "e", "e")
+	err = store.Set(ctx, "foo", []string{"b", "c", "e", "e"})
 	c.Assert(err, qt.Equals, nil)
 
 	acl, err := store.Get(ctx, "foo")
@@ -131,7 +131,7 @@ func TestGetEmpty(t *testing.T) {
 	c := qt.New(t)
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
 
-	err := store.CreateACL(ctx, "foo")
+	err := store.CreateACL(ctx, "foo", nil)
 	c.Assert(err, qt.Equals, nil)
 
 	acl, err := store.Get(ctx, "foo")

@@ -29,27 +29,27 @@ type ACLStore interface {
 	// argument is ignored.
 	// It may return an error with an ErrBadUsername if the initial users
 	// are not valid.
-	CreateACL(ctx context.Context, aclName string, initialUsers ...string) error
+	CreateACL(ctx context.Context, aclName string, initialUsers []string) error
 
 	// Add adds users to the ACL with the given name.
 	// Adding a user that's already in the ACL is a no-op.
 	// It returns an error with an ErrACLNotFound cause if the ACL
 	// does not exist, or with an ErrBadUsername cause if any
 	// of the usernames are not valid.
-	Add(ctx context.Context, aclName string, users ...string) error
+	Add(ctx context.Context, aclName string, users []string) error
 
 	// Remove removes users from the ACL with the given name.
 	// It returns an error with an ErrACLNotFound cause if the ACL
 	// does not exist. It returns an error with an ErrUserNotFound
 	// cause if any of the users do not exist.
 	// TODO should it do nothing in that case?
-	Remove(ctx context.Context, aclName string, users ...string) error
+	Remove(ctx context.Context, aclName string, users []string) error
 
 	// Set sets the users held in the ACL with the given name.
 	// It returns an ErrACLNotFound cause if the ACL does not
 	// exist, or with an ErrBadUsername cause if any
 	// of the usernames are not valid.
-	Set(ctx context.Context, aclName string, users ...string) error
+	Set(ctx context.Context, aclName string, users []string) error
 
 	// Get returns the users held in the ACL with the given name,
 	// sorted lexically. It returns an error with an ErrACLNotFound cause
@@ -70,7 +70,7 @@ type kvStore struct {
 var errAlreadyExists = errgo.Newf("ACL already exists")
 
 // CreateACL implements ACLStore.CreateACL.
-func (s *kvStore) CreateACL(ctx context.Context, aclName string, initialUsers ...string) error {
+func (s *kvStore) CreateACL(ctx context.Context, aclName string, initialUsers []string) error {
 	err := s.kv.Update(ctx, aclName, time.Time{}, func(val []byte) ([]byte, error) {
 		if val != nil {
 			return nil, errAlreadyExists
@@ -91,7 +91,7 @@ func (s *kvStore) CreateACL(ctx context.Context, aclName string, initialUsers ..
 }
 
 // Add implements ACLStore.Add.
-func (s *kvStore) Add(ctx context.Context, aclName string, users ...string) error {
+func (s *kvStore) Add(ctx context.Context, aclName string, users []string) error {
 	err := s.kv.Update(ctx, aclName, time.Time{}, func(val []byte) ([]byte, error) {
 		if val == nil {
 			return nil, errgo.WithCausef(nil, ErrACLNotFound, "")
@@ -111,7 +111,7 @@ func (s *kvStore) Add(ctx context.Context, aclName string, users ...string) erro
 }
 
 // Remove implements ACLStore.Remove.
-func (s *kvStore) Remove(ctx context.Context, aclName string, users ...string) error {
+func (s *kvStore) Remove(ctx context.Context, aclName string, users []string) error {
 	err := s.kv.Update(ctx, aclName, time.Time{}, func(val []byte) ([]byte, error) {
 		if val == nil {
 			return nil, errgo.WithCausef(nil, ErrACLNotFound, "")
@@ -143,7 +143,7 @@ func (s *kvStore) Remove(ctx context.Context, aclName string, users ...string) e
 }
 
 // Set implements ACLStore.Set.
-func (s *kvStore) Set(ctx context.Context, aclName string, users ...string) error {
+func (s *kvStore) Set(ctx context.Context, aclName string, users []string) error {
 	newVal, err := s.aclToValue(users)
 	if err != nil {
 		return errgo.Mask(err, errgo.Is(ErrBadUsername))
