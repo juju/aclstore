@@ -17,8 +17,8 @@ import (
 	qt "github.com/frankban/quicktest"
 	httprequest "gopkg.in/httprequest.v1"
 
-	"github.com/juju/aclstore"
-	"github.com/juju/aclstore/params"
+	aclstore "github.com/juju/aclstore/v2"
+	"github.com/juju/aclstore/v2/params"
 	"github.com/juju/simplekv/memsimplekv"
 	"gopkg.in/errgo.v1"
 )

@@ -11,7 +11,7 @@ import (
 	errgo "gopkg.in/errgo.v1"
 	httprequest "gopkg.in/httprequest.v1"
 
-	"github.com/juju/aclstore"
+	aclstore "github.com/juju/aclstore/v2"
 	"github.com/juju/aclstore/aclclient"
 )
 

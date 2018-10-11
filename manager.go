@@ -12,7 +12,7 @@ import (
 	"gopkg.in/errgo.v1"
 	httprequest "gopkg.in/httprequest.v1"
 
-	"github.com/juju/aclstore/params"
+	"github.com/juju/aclstore/v2/params"
 )
 
 // Params holds the parameters for a NewManager call.
