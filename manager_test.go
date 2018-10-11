@@ -117,8 +117,8 @@ func TestGetACL(t *testing.T) {
 	for _, test := range getACLTests {
 		c.Run(test.testName, func(c *qt.C) {
 			var checkedACL []string
-			m := managerWithACLs(c, test.rootPath, test.users, &checkedACL)
-			srv := httptest.NewServer(m)
+			_, h := managerWithACLs(c, test.rootPath, test.users, &checkedACL)
+			srv := httptest.NewServer(h)
 			defer srv.Close()
 			assertJSONCall(c, "GET", srv.URL+test.path, nil, test.expectStatus, test.expectResponse)
 			c.Assert(checkedACL, qt.DeepEquals, test.expectCheckACL)
@@ -201,8 +201,8 @@ func TestSetACL(t *testing.T) {
 	for _, test := range setACLTests {
 		c.Run(test.testName, func(c *qt.C) {
 			var checkedACL []string
-			m := managerWithACLs(c, "/root", test.users, &checkedACL)
-			srv := httptest.NewServer(m)
+			m, h := managerWithACLs(c, "/root", test.users, &checkedACL)
+			srv := httptest.NewServer(h)
 			defer srv.Close()
 			assertJSONCall(c, "PUT", srv.URL+test.path, map[string][]string{
 				"users": test.setACL,
@@ -318,8 +318,8 @@ func TestModifyACL(t *testing.T) {
 	for _, test := range modifyACLTests {
 		c.Run(test.testName, func(c *qt.C) {
 			var checkedACL []string
-			m := managerWithACLs(c, "/root", test.users, &checkedACL)
-			srv := httptest.NewServer(m)
+			m, h := managerWithACLs(c, "/root", test.users, &checkedACL)
+			srv := httptest.NewServer(h)
 			defer srv.Close()
 			assertJSONCall(c, "POST", srv.URL+test.path, map[string][]string{
 				"add":    test.addUsers,
@@ -341,6 +341,9 @@ func TestWithAuthenticate(t *testing.T) {
 	m, err := aclstore.NewManager(ctx, aclstore.Params{
 		Store:             aclstore.NewACLStore(memsimplekv.NewStore()),
 		InitialAdminUsers: []string{"bob"},
+	})
+	c.Assert(err, qt.Equals, nil)
+	h := m.NewHandler(aclstore.HandlerParams{
 		Authenticate: func(ctx context.Context, w http.ResponseWriter, req *http.Request) (aclstore.Identity, error) {
 			req.ParseForm()
 			user := req.Form.Get("auth")
@@ -360,8 +363,7 @@ func TestWithAuthenticate(t *testing.T) {
 			}), nil
 		},
 	})
-	c.Assert(err, qt.Equals, nil)
-	srv := httptest.NewServer(m)
+	srv := httptest.NewServer(h)
 	defer srv.Close()
 
 	assertJSONCall(c, "GET", srv.URL+"/admin", nil, http.StatusTeapot, "go away")
@@ -376,14 +378,16 @@ func TestForbidden(t *testing.T) {
 	m, err := aclstore.NewManager(ctx, aclstore.Params{
 		Store:             aclstore.NewACLStore(memsimplekv.NewStore()),
 		InitialAdminUsers: []string{"bob"},
+	})
+	c.Assert(err, qt.Equals, nil)
+	h := m.NewHandler(aclstore.HandlerParams{
 		Authenticate: func(ctx context.Context, w http.ResponseWriter, req *http.Request) (aclstore.Identity, error) {
 			return identityFunc(func(ctx context.Context, acl []string) (bool, error) {
 				return false, nil
 			}), nil
 		},
 	})
-	c.Assert(err, qt.Equals, nil)
-	srv := httptest.NewServer(m)
+	srv := httptest.NewServer(h)
 	defer srv.Close()
 
 	assertJSONCall(c, "GET", srv.URL+"/admin", nil, http.StatusForbidden, &httprequest.RemoteError{
@@ -398,7 +402,7 @@ func TestManagerCreateACL(t *testing.T) {
 
 	ctx := context.Background()
 
-	m := managerWithACLs(c, "", nil, &checkedACL)
+	m, _ := managerWithACLs(c, "", nil, &checkedACL)
 
 	err := m.CreateACL(ctx, "foo", "x", "y")
 	c.Assert(err, qt.Equals, nil)
@@ -426,7 +430,7 @@ func TestManagerCreateACLWithInvalidACLName(t *testing.T) {
 
 	ctx := context.Background()
 
-	m := managerWithACLs(c, "", nil, &checkedACL)
+	m, _ := managerWithACLs(c, "", nil, &checkedACL)
 
 	err := m.CreateACL(ctx, "_foo", "x", "y")
 	c.Assert(err, qt.ErrorMatches, `invalid ACL name "_foo"`)
@@ -435,7 +439,7 @@ func TestManagerCreateACLWithInvalidACLName(t *testing.T) {
 // managerWithACLs returns a Manager instance running an ACL manager
 // primed with the given ACLs. When an ACL is checked, *checkedACL is set
 // to the ACL that's checked.
-func managerWithACLs(c *qt.C, rootPath string, acls map[string][]string, checkedACL *[]string) *aclstore.Manager {
+func managerWithACLs(c *qt.C, rootPath string, acls map[string][]string, checkedACL *[]string) (*aclstore.Manager, http.Handler) {
 	ctx := context.Background()
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
 	for aclName, users := range acls {
@@ -443,7 +447,9 @@ func managerWithACLs(c *qt.C, rootPath string, acls map[string][]string, checked
 		c.Assert(err, qt.Equals, nil)
 	}
 	m, err := aclstore.NewManager(ctx, aclstore.Params{
-		Store:    store,
+		Store: store,
+	})
+	h := m.NewHandler(aclstore.HandlerParams{
 		RootPath: rootPath,
 		Authenticate: func(ctx context.Context, w http.ResponseWriter, req *http.Request) (aclstore.Identity, error) {
 			return identityFunc(func(ctx context.Context, acl []string) (bool, error) {
@@ -453,7 +459,7 @@ func managerWithACLs(c *qt.C, rootPath string, acls map[string][]string, checked
 		},
 	})
 	c.Assert(err, qt.Equals, nil)
-	return m
+	return m, h
 }
 
 type identityFunc func(ctx context.Context, acl []string) (bool, error)

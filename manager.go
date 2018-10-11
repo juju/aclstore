@@ -20,17 +20,6 @@ type Params struct {
 	// Store holds the persistent storage used by the handler.
 	Store ACLStore
 
-	// RootPath holds the root URL path prefix to use
-	// for the ACL endpoints. All the endpoints will be
-	// prefixed with this path.
-	RootPath string
-
-	// Authenticate authenticates the given HTTP request and returns
-	// the resulting authenticated identity. If authentication
-	// fails, Authenticate should write its own response and return
-	// an error.
-	Authenticate func(ctx context.Context, w http.ResponseWriter, req *http.Request) (Identity, error)
-
 	// InitialAdminUsers holds the contents of the admin ACL
 	// when it is first created.
 	InitialAdminUsers []string
@@ -53,8 +42,7 @@ const CodeACLNotFound = "ACL not found"
 
 // Manager implements an ACL manager.
 type Manager struct {
-	p      Params
-	router *httprouter.Router
+	p Params
 }
 
 var errAuthenticationFailed = errgo.Newf("authentication failed")
@@ -92,35 +80,9 @@ func NewManager(ctx context.Context, p Params) (*Manager, error) {
 		return nil, errgo.Notef(err, "cannot create initial admin ACL")
 	}
 	m := &Manager{
-		p:      p,
-		router: httprouter.New(),
+		p: p,
 	}
-	// TODO(rog) install custom NotFound handler into router?
-	httprequest.AddHandlers(m.router, reqServer.Handlers(m.newHandler))
 	return m, nil
-}
-
-// ServeHTTP implements http.Handler by serving an ACL administration
-// interface that allows clients to manipulate the ACLs. The set of
-// ACLs that can be manipulated can be changed with the Manager.CreateACL
-// method.
-//
-// All the endpoints are situated underneath the RootPath prefix
-// passed to NewManager.
-func (m *Manager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	path := req.URL.Path
-	if m.p.RootPath != "" {
-		path = strings.TrimPrefix(path, m.p.RootPath)
-		if len(path) == len(req.URL.Path) || path == "" || path[0] != '/' {
-			httprequest.WriteJSON(w, http.StatusNotFound, &httprequest.RemoteError{
-				Message: "URL path not found",
-				Code:    httprequest.CodeNotFound,
-			})
-			return
-		}
-	}
-	req.URL.Path = path
-	m.router.ServeHTTP(w, req)
 }
 
 // ACL returns the members of the given ACL.
@@ -158,18 +120,69 @@ type aclName interface {
 	ACLName() string
 }
 
+// HandlerParams holds the parameters for a NewHandler call.
+type HandlerParams struct {
+	// RootPath holds the root URL path prefix to use
+	// for the ACL endpoints. All the endpoints will be
+	// prefixed with this path.
+	RootPath string
+
+	// Authenticate authenticates the given HTTP request and returns
+	// the resulting authenticated identity. If authentication
+	// fails, Authenticate should write its own response and return
+	// an error.
+	Authenticate func(ctx context.Context, w http.ResponseWriter, req *http.Request) (Identity, error)
+}
+
+// NewHandler creates an ACL administration interface that allows clients
+// to manipulate the ACLs. The set of ACLs that can be manipulated can be
+// changed with the Manager.CreateACL method.
+func (m *Manager) NewHandler(p HandlerParams) http.Handler {
+	h := &handler{
+		p:      p,
+		m:      m,
+		router: httprouter.New(),
+	}
+	// TODO(rog) install custom NotFound handler into router?
+	httprequest.AddHandlers(h.router, reqServer.Handlers(h.newHandler))
+	return h
+}
+
 type handler struct {
-	manager *Manager
+	p      HandlerParams
+	m      *Manager
+	router *httprouter.Router
+}
+
+// ServeHTTP implements http.Handler.
+func (h *handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	path := req.URL.Path
+	if h.p.RootPath != "" {
+		path = strings.TrimPrefix(path, h.p.RootPath)
+		if len(path) == len(req.URL.Path) || path == "" || path[0] != '/' {
+			httprequest.WriteJSON(w, http.StatusNotFound, &httprequest.RemoteError{
+				Message: "URL path not found",
+				Code:    httprequest.CodeNotFound,
+			})
+			return
+		}
+	}
+	req.URL.Path = path
+	h.router.ServeHTTP(w, req)
+}
+
+type handler1 struct {
+	h *handler
 }
 
 // newHandler returns a handler instance to serve a particular HTTP request.
-func (m *Manager) newHandler(p httprequest.Params, arg aclName) (handler, context.Context, error) {
+func (h *handler) newHandler(p httprequest.Params, arg aclName) (handler1, context.Context, error) {
 	ctx := p.Context
-	if err := m.authorizeRequest(ctx, p, arg.ACLName()); err != nil {
-		return handler{}, nil, errgo.Mask(err, errgo.Any)
+	if err := h.authorizeRequest(ctx, p, arg.ACLName()); err != nil {
+		return handler1{}, nil, errgo.Mask(err, errgo.Any)
 	}
-	return handler{
-		manager: m,
+	return handler1{
+		h: h,
 	}, p.Context, nil
 }
 
@@ -177,11 +190,11 @@ func (m *Manager) newHandler(p httprequest.Params, arg aclName) (handler, contex
 // authorization failed because Authenticate failed, it returns an error
 // with an errAuthenticationFailed cause to signal that the desired
 // error response has already been written.
-func (m *Manager) authorizeRequest(ctx context.Context, p httprequest.Params, aclName string) error {
+func (h *handler) authorizeRequest(ctx context.Context, p httprequest.Params, aclName string) error {
 	if aclName == "" {
 		return httprequest.Errorf(httprequest.CodeBadRequest, "empty ACL name")
 	}
-	identity, err := m.p.Authenticate(ctx, p.Response, p.Request)
+	identity, err := h.p.Authenticate(ctx, p.Response, p.Request)
 	if err != nil {
 		return errAuthenticationFailed
 	}
@@ -195,13 +208,13 @@ func (m *Manager) authorizeRequest(ctx context.Context, p httprequest.Params, ac
 		// of the meta-ACL for that name.
 		checkACLName = metaName(aclName)
 	}
-	acl, err := m.ACL(ctx, checkACLName)
+	acl, err := h.m.ACL(ctx, checkACLName)
 	if err != nil {
 		return errgo.Mask(err, errgo.Is(ErrACLNotFound))
 	}
 	if checkACLName != AdminACL {
 		// Admin users always get permission to do anything.
-		adminACL, err := m.ACL(ctx, AdminACL)
+		adminACL, err := h.m.ACL(ctx, AdminACL)
 		if err != nil {
 			return errgo.Notef(err, "cannot get admin ACL")
 		}
@@ -220,8 +233,8 @@ func (m *Manager) authorizeRequest(ctx context.Context, p httprequest.Params, ac
 // GetACL returns the members of the ACL with the requested name.
 // Only administrators and members of the meta-ACL for the name
 // may access this endpoint. The meta-ACL for meta-ACLs is "admin".
-func (h handler) GetACL(p httprequest.Params, req *params.GetACLRequest) (*params.GetACLResponse, error) {
-	users, err := h.manager.p.Store.Get(p.Context, req.Name)
+func (h handler1) GetACL(p httprequest.Params, req *params.GetACLRequest) (*params.GetACLResponse, error) {
+	users, err := h.h.m.p.Store.Get(p.Context, req.Name)
 	if err != nil {
 		return nil, errgo.Mask(err, errgo.Is(ErrACLNotFound))
 	}
@@ -233,23 +246,23 @@ func (h handler) GetACL(p httprequest.Params, req *params.GetACLRequest) (*param
 // SetACL sets the members of the ACL with the requested name.
 // Only administrators and members of the meta-ACL for the name
 // may access this endpoint. The meta-ACL for meta-ACLs is "admin".
-func (h handler) SetACL(p httprequest.Params, req *params.SetACLRequest) error {
-	err := h.manager.p.Store.Set(p.Context, req.Name, req.Body.Users)
+func (h handler1) SetACL(p httprequest.Params, req *params.SetACLRequest) error {
+	err := h.h.m.p.Store.Set(p.Context, req.Name, req.Body.Users)
 	return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
 }
 
 // ModifyACL modifies the members of the ACL with the requested name.
 // Only administrators and members of the meta-ACL for the name
 // may access this endpoint. The meta-ACL for meta-ACLs is "admin".
-func (h handler) ModifyACL(p httprequest.Params, req *params.ModifyACLRequest) error {
+func (h handler1) ModifyACL(p httprequest.Params, req *params.ModifyACLRequest) error {
 	switch {
 	case len(req.Body.Add) > 0 && len(req.Body.Remove) > 0:
 		return httprequest.Errorf(httprequest.CodeBadRequest, "cannot add and remove users at the same time")
 	case len(req.Body.Add) > 0:
-		err := h.manager.p.Store.Add(p.Context, req.Name, req.Body.Add)
+		err := h.h.m.p.Store.Add(p.Context, req.Name, req.Body.Add)
 		return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
 	case len(req.Body.Remove) > 0:
-		err := h.manager.p.Store.Remove(p.Context, req.Name, req.Body.Remove)
+		err := h.h.m.p.Store.Remove(p.Context, req.Name, req.Body.Remove)
 		return errgo.Mask(err, errgo.Is(ErrACLNotFound), errgo.Is(ErrBadUsername))
 	default:
 		return nil

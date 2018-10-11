@@ -11,8 +11,8 @@ import (
 	errgo "gopkg.in/errgo.v1"
 	httprequest "gopkg.in/httprequest.v1"
 
-	aclstore "github.com/juju/aclstore/v2"
 	"github.com/juju/aclstore/aclclient"
+	aclstore "github.com/juju/aclstore/v2"
 )
 
 func TestGet(t *testing.T) {
@@ -130,15 +130,16 @@ func newServer(ctx context.Context, c *qt.C) (*aclstore.Manager, *httptest.Serve
 	store := aclstore.NewACLStore(memsimplekv.NewStore())
 
 	manager, err := aclstore.NewManager(ctx, aclstore.Params{
-		Store: store,
-		Authenticate: func(ctx context.Context, w http.ResponseWriter, req *http.Request) (aclstore.Identity, error) {
-			return allowed{}, nil
-		},
+		Store:             store,
 		InitialAdminUsers: []string{"test-admin"},
 	})
 	c.Assert(err, qt.Equals, nil)
 
-	srv := httptest.NewServer(manager)
+	srv := httptest.NewServer(manager.NewHandler(aclstore.HandlerParams{
+		Authenticate: func(ctx context.Context, w http.ResponseWriter, req *http.Request) (aclstore.Identity, error) {
+			return allowed{}, nil
+		},
+	}))
 	client := aclclient.New(aclclient.NewParams{
 		BaseURL: srv.URL,
 		Doer:    srv.Client(),
