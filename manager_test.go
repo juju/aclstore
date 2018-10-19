@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -55,7 +56,7 @@ var getACLTests = []struct {
 		"users": {"alice", "bob"},
 	},
 }, {
-	testName:     "get outside of root",
+	testName:     "get_outside_of_root",
 	rootPath:     "/root",
 	path:         "/blah/foo",
 	expectStatus: http.StatusNotFound,
@@ -64,7 +65,7 @@ var getACLTests = []struct {
 		Code:    httprequest.CodeNotFound,
 	},
 }, {
-	testName:     "get outside of root with root as prefix",
+	testName:     "get_outside_of_root_with_root_as_prefix",
 	rootPath:     "/root",
 	path:         "/rootfoo/admin",
 	expectStatus: http.StatusNotFound,
@@ -344,13 +345,14 @@ func TestWithAuthenticate(t *testing.T) {
 	})
 	c.Assert(err, qt.Equals, nil)
 	h := m.NewHandler(aclstore.HandlerParams{
+		RootPath: "/rootpath",
 		Authenticate: func(ctx context.Context, w http.ResponseWriter, req *http.Request) (aclstore.Identity, error) {
 			req.ParseForm()
 			user := req.Form.Get("auth")
 			if user == "" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTeapot)
-				w.Write([]byte(`"go away"`))
+				fmt.Fprintf(w, `"go away: %s"`, req.URL.Path)
 				return nil, errgo.Newf("no auth header found")
 			}
 			return identityFunc(func(ctx context.Context, acl []string) (bool, error) {
@@ -366,8 +368,8 @@ func TestWithAuthenticate(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	assertJSONCall(c, "GET", srv.URL+"/admin", nil, http.StatusTeapot, "go away")
-	assertJSONCall(c, "GET", srv.URL+"/admin?auth=bob", nil, http.StatusOK, params.GetACLResponse{
+	assertJSONCall(c, "GET", srv.URL+"/rootpath/admin", nil, http.StatusTeapot, "go away: /rootpath/admin")
+	assertJSONCall(c, "GET", srv.URL+"/rootpath/admin?auth=bob", nil, http.StatusOK, params.GetACLResponse{
 		Users: []string{"bob"},
 	})
 }
