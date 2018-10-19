@@ -6,6 +6,7 @@ package aclstore
 import (
 	"context"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
@@ -143,8 +144,15 @@ func (m *Manager) NewHandler(p HandlerParams) http.Handler {
 		m:      m,
 		router: httprouter.New(),
 	}
-	// TODO(rog) install custom NotFound handler into router?
-	httprequest.AddHandlers(h.router, reqServer.Handlers(h.newHandler))
+	h.router.NotFound = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		httprequest.WriteJSON(w, http.StatusNotFound, &httprequest.RemoteError{
+			Message: "URL path not found",
+			Code:    httprequest.CodeNotFound,
+		})
+	})
+	for _, ep := range reqServer.Handlers(h.newHandler) {
+		h.router.Handle(ep.Method, path.Join(p.RootPath, ep.Path), ep.Handle)
+	}
 	return h
 }
 
@@ -156,18 +164,6 @@ type handler struct {
 
 // ServeHTTP implements http.Handler.
 func (h *handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	path := req.URL.Path
-	if h.p.RootPath != "" {
-		path = strings.TrimPrefix(path, h.p.RootPath)
-		if len(path) == len(req.URL.Path) || path == "" || path[0] != '/' {
-			httprequest.WriteJSON(w, http.StatusNotFound, &httprequest.RemoteError{
-				Message: "URL path not found",
-				Code:    httprequest.CodeNotFound,
-			})
-			return
-		}
-	}
-	req.URL.Path = path
 	h.router.ServeHTTP(w, req)
 }
 
