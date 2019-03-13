@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-
-	aclstore "github.com/juju/aclstore/v2"
 	"github.com/juju/simplekv/memsimplekv"
 	"gopkg.in/errgo.v1"
+
+	aclstore "github.com/juju/aclstore/v2"
 )
 
 func TestCreateACL(t *testing.T) {

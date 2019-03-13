@@ -16,12 +16,12 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/juju/simplekv/memsimplekv"
+	"gopkg.in/errgo.v1"
 	httprequest "gopkg.in/httprequest.v1"
 
 	aclstore "github.com/juju/aclstore/v2"
 	"github.com/juju/aclstore/v2/params"
-	"github.com/juju/simplekv/memsimplekv"
-	"gopkg.in/errgo.v1"
 )
 
 var getACLTests = []struct {

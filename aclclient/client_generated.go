@@ -4,9 +4,11 @@
 package aclclient
 
 import (
-	"github.com/juju/aclstore/params"
-	"golang.org/x/net/context"
+	"context"
+
 	"gopkg.in/httprequest.v1"
+
+	"github.com/juju/aclstore/v2/params"
 )
 
 type client struct {

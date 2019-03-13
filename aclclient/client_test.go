@@ -1,18 +1,18 @@
 package aclclient_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/juju/simplekv/memsimplekv"
-	"golang.org/x/net/context"
 	errgo "gopkg.in/errgo.v1"
 	httprequest "gopkg.in/httprequest.v1"
 
-	"github.com/juju/aclstore/aclclient"
 	aclstore "github.com/juju/aclstore/v2"
+	"github.com/juju/aclstore/v2/aclclient"
 )
 
 func TestGet(t *testing.T) {
