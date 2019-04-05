@@ -1,13 +1,15 @@
 package aclclient
 
 import (
-	"github.com/juju/aclstore/params"
-	"golang.org/x/net/context"
+	"context"
+
 	errgo "gopkg.in/errgo.v1"
 	"gopkg.in/httprequest.v1"
+
+	"github.com/juju/aclstore/v2/params"
 )
 
-//go:generate httprequest-generate-client github.com/juju/aclstore handler client
+//go:generate httprequest-generate-client github.com/juju/aclstore/v2 handler1 client
 
 // Client represents an ACL store client.
 type Client struct {
