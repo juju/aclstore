@@ -57,6 +57,11 @@ type ACLStore interface {
 	Get(ctx context.Context, aclName string) ([]string, error)
 }
 
+// ACLLister enables clients to list stored ACLs.
+type ACLLister interface {
+	ACLs(ctx context.Context) ([]string, error)
+}
+
 // NewACLStore returns an ACLStore implementation that uses an underlying
 // key-value store for persistent storage.
 func NewACLStore(kv simplekv.Store) ACLStore {
@@ -68,6 +73,19 @@ type kvStore struct {
 }
 
 var errAlreadyExists = errgo.Newf("ACL already exists")
+
+// ACLs implements the ACLLister interface.
+func (s *kvStore) ACLs(ctx context.Context) ([]string, error) {
+	lister, ok := s.kv.(simplekv.KeyLister)
+	if !ok {
+		return nil, errgo.Newf("cannot list ACLs")
+	}
+	acls, err := lister.Keys(ctx)
+	if err != nil {
+		return nil, errgo.Mask(err)
+	}
+	return acls, nil
+}
 
 // CreateACL implements ACLStore.CreateACL.
 func (s *kvStore) CreateACL(ctx context.Context, aclName string, initialUsers []string) error {
