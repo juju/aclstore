@@ -5,6 +5,7 @@ package aclstore_test
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
@@ -137,4 +138,25 @@ func TestGetEmpty(t *testing.T) {
 	acl, err := store.Get(ctx, "foo")
 	c.Assert(err, qt.Equals, nil)
 	c.Assert(acl, qt.HasLen, 0)
+}
+
+func TestACLLister(t *testing.T) {
+	ctx := context.Background()
+	c := qt.New(t)
+	store := aclstore.NewACLStore(memsimplekv.NewStore())
+	lister, ok := store.(aclstore.ACLLister)
+	c.Assert(ok, qt.Equals, true)
+	acls, err := lister.ACLs(ctx)
+	c.Assert(err, qt.Equals, nil)
+	c.Assert(acls, qt.HasLen, 0)
+	err = store.CreateACL(ctx, "foo", []string{"x", "y"})
+	c.Assert(err, qt.Equals, nil)
+	err = store.CreateACL(ctx, "bar", []string{"x", "y"})
+	c.Assert(err, qt.Equals, nil)
+	err = store.CreateACL(ctx, "choo", []string{"x", "y"})
+	c.Assert(err, qt.Equals, nil)
+	acls, err = lister.ACLs(ctx)
+	c.Assert(err, qt.Equals, nil)
+	sort.Strings(acls)
+	c.Assert(acls, qt.DeepEquals, []string{"bar", "choo", "foo"})
 }
