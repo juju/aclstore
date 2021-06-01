@@ -6,6 +6,7 @@ package aclstore
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
@@ -95,8 +96,13 @@ func NewManager(ctx context.Context, p Params) (*Manager, error) {
 		p:      p,
 		router: httprouter.New(),
 	}
-	// TODO(rog) install custom NotFound handler into router?
 	httprequest.AddHandlers(m.router, reqServer.Handlers(m.newHandler))
+	m.router.NotFound = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		httprequest.WriteJSON(w, http.StatusNotFound, &httprequest.RemoteError{
+			Message: "URL path not found",
+			Code:    httprequest.CodeNotFound,
+		})
+	})
 	return m, nil
 }
 
@@ -111,14 +117,8 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 	if m.p.RootPath != "" {
 		path = strings.TrimPrefix(path, m.p.RootPath)
-		if len(path) == len(req.URL.Path) || path == "" || path[0] != '/' {
-			httprequest.WriteJSON(w, http.StatusNotFound, &httprequest.RemoteError{
-				Message: "URL path not found",
-				Code:    httprequest.CodeNotFound,
-			})
-			return
-		}
 	}
+
 	req.URL.Path = path
 	m.router.ServeHTTP(w, req)
 }
@@ -254,6 +254,23 @@ func (h handler) ModifyACL(p httprequest.Params, req *params.ModifyACLRequest) e
 	default:
 		return nil
 	}
+}
+
+// GetACLs returns the list of all ACLs.
+// Only administrators may access this endpoint.
+func (h handler) GetACLs(p httprequest.Params, req *params.GetACLsRequest) (*params.GetACLsResponse, error) {
+	lister, ok := h.manager.p.Store.(ACLLister)
+	if !ok {
+		return nil, errgo.Newf("cannot list ACLs")
+	}
+	acls, err := lister.ACLs(p.Context)
+	if err != nil {
+		return nil, errgo.Mask(err)
+	}
+	sort.Strings(acls)
+	return &params.GetACLsResponse{
+		ACLs: acls,
+	}, nil
 }
 
 func metaName(aclName string) string {

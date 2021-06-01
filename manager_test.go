@@ -109,6 +109,19 @@ var getACLTests = []struct {
 	expectResponse: map[string][]string{
 		"users": {"claire", "ed"},
 	},
+}, {
+	testName: "get_all_ACLs",
+	rootPath: "/root",
+	path:     "/root/",
+	users: map[string][]string{
+		"admin": {"alice", "bob"},
+		"read":  {"eve"},
+	},
+	expectCheckACL: []string{"alice", "bob"},
+	expectStatus:   http.StatusOK,
+	expectResponse: map[string][]string{
+		"acls": {"admin", "read"},
+	},
 }}
 
 func TestGetACL(t *testing.T) {
