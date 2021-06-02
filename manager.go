@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
@@ -263,6 +264,23 @@ func (h handler1) ModifyACL(p httprequest.Params, req *params.ModifyACLRequest) 
 	default:
 		return nil
 	}
+}
+
+// GetACLs returns the list of all ACLs.
+// Only administrators may access this endpoint.
+func (h handler1) GetACLs(p httprequest.Params, req *params.GetACLsRequest) (*params.GetACLsResponse, error) {
+	lister, ok := h.h.m.p.Store.(ACLLister)
+	if !ok {
+		return nil, errgo.Newf("cannot list ACLs")
+	}
+	acls, err := lister.ACLs(p.Context)
+	if err != nil {
+		return nil, errgo.Mask(err)
+	}
+	sort.Strings(acls)
+	return &params.GetACLsResponse{
+		ACLs: acls,
+	}, nil
 }
 
 func metaName(aclName string) string {

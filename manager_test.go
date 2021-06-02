@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sort"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
@@ -21,6 +22,7 @@ import (
 	httprequest "gopkg.in/httprequest.v1"
 
 	aclstore "github.com/juju/aclstore/v2"
+	"github.com/juju/aclstore/v2/aclclient"
 	"github.com/juju/aclstore/v2/params"
 )
 
@@ -109,6 +111,19 @@ var getACLTests = []struct {
 	expectStatus:   http.StatusOK,
 	expectResponse: map[string][]string{
 		"users": {"claire", "ed"},
+	},
+}, {
+	testName: "get_all_ACLs",
+	rootPath: "/root",
+	path:     "/root/",
+	users: map[string][]string{
+		"admin": {"alice", "bob"},
+		"read":  {"eve"},
+	},
+	expectCheckACL: []string{"alice", "bob"},
+	expectStatus:   http.StatusOK,
+	expectResponse: map[string][]string{
+		"acls": {"admin", "read"},
 	},
 }}
 
@@ -436,6 +451,47 @@ func TestManagerCreateACLWithInvalidACLName(t *testing.T) {
 
 	err := m.CreateACL(ctx, "_foo", "x", "y")
 	c.Assert(err, qt.ErrorMatches, `invalid ACL name "_foo"`)
+}
+
+func TestGetACLs(t *testing.T) {
+	ctx := context.Background()
+	c := qt.New(t)
+
+	m, err := aclstore.NewManager(ctx, aclstore.Params{
+		Store:             aclstore.NewACLStore(memsimplekv.NewStore()),
+		InitialAdminUsers: []string{"test-admin"},
+	})
+	c.Assert(err, qt.Equals, nil)
+	h := m.NewHandler(aclstore.HandlerParams{
+		RootPath: "/rootpath",
+		Authenticate: func(ctx context.Context, w http.ResponseWriter, req *http.Request) (aclstore.Identity, error) {
+			return allowed{}, nil
+		},
+	})
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	client := aclclient.New(aclclient.NewParams{
+		BaseURL: srv.URL + "/rootpath",
+		Doer:    srv.Client(),
+	})
+	err = m.CreateACL(ctx, "test1", "user1")
+	c.Assert(err, qt.Equals, nil)
+	err = m.CreateACL(ctx, "test2", "user1")
+	c.Assert(err, qt.Equals, nil)
+	err = m.CreateACL(ctx, "test3", "user1")
+	c.Assert(err, qt.Equals, nil)
+
+	acls, err := client.GetACLs(ctx, &params.GetACLsRequest{})
+	c.Assert(err, qt.Equals, nil)
+	sort.Strings(acls.ACLs)
+	c.Assert(acls.ACLs, qt.DeepEquals, []string{"_test1", "_test2", "_test3", "admin", "test1", "test2", "test3"})
+}
+
+type allowed struct{}
+
+func (allowed) Allow(context.Context, []string) (bool, error) {
+	return true, nil
 }
 
 // managerWithACLs returns a Manager instance running an ACL manager
