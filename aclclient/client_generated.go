@@ -5,10 +5,8 @@ package aclclient
 
 import (
 	"context"
-
-	"gopkg.in/httprequest.v1"
-
 	"github.com/juju/aclstore/v2/params"
+	"gopkg.in/httprequest.v1"
 )
 
 type client struct {
@@ -20,6 +18,14 @@ type client struct {
 // may access this endpoint. The meta-ACL for meta-ACLs is "admin".
 func (c *client) GetACL(ctx context.Context, p *params.GetACLRequest) (*params.GetACLResponse, error) {
 	var r *params.GetACLResponse
+	err := c.Client.Call(ctx, p, &r)
+	return r, err
+}
+
+// GetACLs returns the list of all ACLs.
+// Only administrators may access this endpoint.
+func (c *client) GetACLs(ctx context.Context, p *params.GetACLsRequest) (*params.GetACLsResponse, error) {
+	var r *params.GetACLsResponse
 	err := c.Client.Call(ctx, p, &r)
 	return r, err
 }

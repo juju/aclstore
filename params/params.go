@@ -60,3 +60,18 @@ func (r GetACLRequest) ACLName() string {
 type GetACLResponse struct {
 	Users []string `json:"users"`
 }
+
+// GetACLsRequest holds parameters for an aclstore.Manager.GetACLs call.
+type GetACLsRequest struct {
+	httprequest.Route `httprequest:"GET /"`
+}
+
+// ACLName returns the name of the ACL that's being retrieved.
+func (r GetACLsRequest) ACLName() string {
+	return "admin"
+}
+
+// GetACLsResponse holds the response body returned by an aclstore.Manager.GetACLs call.
+type GetACLsResponse struct {
+	ACLs []string `json:"acls"`
+}

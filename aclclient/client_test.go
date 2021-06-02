@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
@@ -13,6 +14,7 @@ import (
 
 	aclstore "github.com/juju/aclstore/v2"
 	"github.com/juju/aclstore/v2/aclclient"
+	"github.com/juju/aclstore/v2/params"
 )
 
 func TestGet(t *testing.T) {
@@ -124,6 +126,25 @@ func TestRemoveError(t *testing.T) {
 	rerr, ok := errgo.Cause(err).(*httprequest.RemoteError)
 	c.Assert(ok, qt.Equals, true, qt.Commentf("unexpected error cause %T", errgo.Cause(err)))
 	c.Assert(rerr.Code, qt.Equals, aclstore.CodeACLNotFound)
+}
+
+func TestGetACLs(t *testing.T) {
+	ctx := context.Background()
+	c := qt.New(t)
+	manager, srv, client := newServer(ctx, c)
+	defer srv.Close()
+
+	err := manager.CreateACL(ctx, "test1", "test1", "test2", "test3")
+	c.Assert(err, qt.Equals, nil)
+	err = manager.CreateACL(ctx, "test2", "test1", "test2", "test3")
+	c.Assert(err, qt.Equals, nil)
+	err = manager.CreateACL(ctx, "test3", "test1", "test2", "test3")
+	c.Assert(err, qt.Equals, nil)
+
+	acls, err := client.GetACLs(ctx, &params.GetACLsRequest{})
+	c.Assert(err, qt.Equals, nil)
+	sort.Strings(acls.ACLs)
+	c.Assert(acls.ACLs, qt.DeepEquals, []string{"_test1", "_test2", "_test3", "admin", "test1", "test2", "test3"})
 }
 
 func newServer(ctx context.Context, c *qt.C) (*aclstore.Manager, *httptest.Server, *aclclient.Client) {
